@@ -13,7 +13,7 @@ import (
 type uuId string
 
 type Chat struct {
-	db             inMemoryDb
+	db             *inMemoryDb
 	natsConnection *nats.Conn
 }
 
@@ -37,7 +37,7 @@ func NewChat(natsURL string) (*Chat, error) {
 	}
 
 	return &Chat{
-		db: inMemoryDb{
+		db: &inMemoryDb{
 			storage: make(map[uuId]Client),
 			mtx:     sync.RWMutex{},
 		},
@@ -65,29 +65,42 @@ func (chat *Chat) RegisterClient() {
 
 func (chat *Chat) NewClient(client *Client) {
 	// send join message to all client exept registerd client .
-	go chat.Publisher([]byte("joind to chat"), client)
+	go chat.SendMessage([]byte("joind to chat"), client)
 
 	// listen for incomming message from registerd clinet .
-	go chat.Subscriber(fmt.Sprintf("%s", client.UserId), client)
+	go chat.ReciveMessage(fmt.Sprintf("%s", client.UserId), client)
 }
 
-func (chat *Chat) Publisher(msg []byte, client *Client) {
+func (chat *Chat) SendMessage(msg []byte, client *Client) {
 	chat.db.mtx.RLock()
 	defer chat.db.mtx.RUnlock()
-	for uuid := range chat.db.storage {
-		pay_load := fmt.Sprintf("%s-", client.UserName) + string(msg)
-		if uuid != client.UserId {
-			chat.natsConnection.Publish(fmt.Sprintf("%s.%s", "Server", uuid), []byte(pay_load))
+	var payLoad string
+	switch string(msg) {
+	case "#users":
+		payLoad += fmt.Sprintf("%s-\n**%-12s**\n", client.UserName, "Online users")
+		for _, clnt := range chat.db.storage {
+			if clnt.Online {
+				payLoad += fmt.Sprintf("**%-12s**\n", clnt.UserName)
+			}
 		}
+		chat.natsConnection.Publish(fmt.Sprintf("%s.%s", "Server", client.UserId), []byte(payLoad))
+	default:
+		for uuid := range chat.db.storage {
+			payLoad := fmt.Sprintf("%s-", client.UserName) + string(msg)
+			if uuid != client.UserId {
+				chat.natsConnection.Publish(fmt.Sprintf("%s.%s", "Server", uuid), []byte(payLoad))
+			}
+		}
+
 	}
 }
 
-func (chat *Chat) Subscriber(topic string, client *Client) {
+func (chat *Chat) ReciveMessage(topic string, client *Client) {
 	chat.natsConnection.Subscribe(topic, func(msg *nats.Msg) {
 		fmt.Printf("Message from %s : %s\n", client.UserName, string(msg.Data))
 
 		// send incomming message from registerd clinet to all others client .
-		go chat.Publisher(msg.Data, client)
+		go chat.SendMessage(msg.Data, client)
 	})
 }
 

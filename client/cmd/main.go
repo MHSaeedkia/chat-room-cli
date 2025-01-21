@@ -18,6 +18,7 @@ type uuId string
 type Chat struct {
 	scanner        *bufio.Scanner
 	natsConnection *nats.Conn
+	client         *Client
 }
 
 type Client struct {
@@ -36,13 +37,16 @@ func NewChat(natsURL string) (*Chat, error) {
 
 	scnr := bufio.NewScanner(os.Stdin)
 
+	clnt := &Client{}
+
 	return &Chat{
 		scanner:        scnr,
 		natsConnection: nc,
+		client:         clnt,
 	}, nil
 }
 
-func (chat *Chat) NewCLient() (Client, error) {
+func (chat *Chat) NewCLient() error {
 	fmt.Printf("Welcome to chat room..\nWhat is your name : ")
 	chat.scanner.Scan()
 	client := Client{
@@ -52,17 +56,20 @@ func (chat *Chat) NewCLient() (Client, error) {
 	}
 	data, err := json.Marshal(client)
 	if err != nil {
-		return Client{}, err
+		return err
 	}
+
+	chat.client = &client
+
 	err = chat.natsConnection.Publish("Client.Register", data)
-	return client, err
+	return err
 }
 
-func (chat *Chat) Publisher(client *Client) {
+func (chat *Chat) SendMessage(topic string) {
 	for chat.scanner.Scan() {
 		fmt.Printf("> ")
 		text := chat.scanner.Text()
-		err := chat.natsConnection.Publish(fmt.Sprintf("%s", client.UserId), []byte(text))
+		err := chat.natsConnection.Publish(topic, []byte(text))
 		if err != nil {
 			log.Fatal(err.Error())
 		}
@@ -72,10 +79,14 @@ func (chat *Chat) Publisher(client *Client) {
 	}
 }
 
-func (chat *Chat) Subscriber(topic string) {
+func (chat *Chat) ReciveMessage(topic string) {
 	chat.natsConnection.Subscribe(topic, func(msg *nats.Msg) {
 		data := strings.Split(string(msg.Data), "-")
-		fmt.Printf("New message from %s : %s\n", data[0], string(data[1]))
+		if data[0] == chat.client.UserName {
+			fmt.Printf("New message : %s\n", string(data[1]))
+		} else {
+			fmt.Printf("New message from %s : %s\n", data[0], string(data[1]))
+		}
 		fmt.Printf("> ")
 	})
 }
@@ -87,7 +98,7 @@ func main() {
 	}
 	fmt.Println("Connected to " + nats.DefaultURL)
 
-	client, err := chat.NewCLient()
+	err = chat.NewCLient()
 	if err != nil {
 		log.Fatal(err.Error())
 	}
@@ -95,10 +106,10 @@ func main() {
 	fmt.Printf("> ")
 
 	// send messages to server
-	go chat.Publisher(&client)
+	go chat.SendMessage(fmt.Sprintf("%s", chat.client.UserId))
 
 	// get another users message
-	go chat.Subscriber(fmt.Sprintf("%s.%s", "Server", client.UserId))
+	go chat.ReciveMessage(fmt.Sprintf("%s.%s", "Server", chat.client.UserId))
 
 	// Keep the connection alive
 	runtime.Goexit()
