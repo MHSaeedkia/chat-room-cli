@@ -98,6 +98,7 @@ func main() {
 	}
 	fmt.Println("Connected to " + nats.DefaultURL)
 
+	// register new client
 	go chat.RegisterClient()
 
 	// Keep the connection alive
