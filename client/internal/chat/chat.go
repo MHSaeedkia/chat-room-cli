@@ -43,6 +43,7 @@ func NewChat(natsURL string) (ChatInterface, error) {
 	}, nil
 }
 
+// Add new client
 func (chat *Chat) NewCLient() error {
 	fmt.Printf("Welcome to chat room..\nWhat is your name : ")
 	chat.Scanner.Scan()
@@ -62,6 +63,7 @@ func (chat *Chat) NewCLient() error {
 	return err
 }
 
+// Send message to server
 func (chat *Chat) SendMessage(topic string) {
 	for chat.Scanner.Scan() {
 		fmt.Printf("> ")
@@ -76,6 +78,7 @@ func (chat *Chat) SendMessage(topic string) {
 	}
 }
 
+// Recive message from server
 func (chat *Chat) ReciveMessage(topic string) {
 	chat.NatsConnection.Subscribe(topic, func(msg *nats.Msg) {
 		data := strings.Split(string(msg.Data), "-")
@@ -88,6 +91,7 @@ func (chat *Chat) ReciveMessage(topic string) {
 	})
 }
 
+// Get user id
 func (chat *Chat) GetUserId() uuId {
 	return chat.Client.UserId
 }

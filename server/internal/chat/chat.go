@@ -1,36 +1,28 @@
-package main
+package chat
 
 import (
 	"encoding/json"
 	"fmt"
-	"runtime"
+	"log"
 	"sync"
 
-	"github.com/labstack/gommon/log"
 	"github.com/nats-io/nats.go"
 )
 
-type uuId string
+type ChatInterface interface {
+	RegisterClient()
+	NewClient(Client *Client)
+	SendMessage(msg []byte, Client *Client)
+	ReciveMessage(topic string, Client *Client)
+}
 
 type Chat struct {
 	db             *inMemoryDb
 	NatsConnection *nats.Conn
 }
 
-type inMemoryDb struct {
-	storage map[uuId]Client
-	mtx     sync.RWMutex
-}
-
-type Client struct {
-	UserName string `json:"userName"`
-	UserId   uuId   `json:"userId"`
-	Message  string `json:"Message"`
-	Online   bool   `json:"online"`
-}
-
 // NewChat creates and returns a new instance of Chat
-func NewChat(natsURL string) (*Chat, error) {
+func NewChat(natsURL string) (ChatInterface, error) {
 	nc, err := nats.Connect(natsURL)
 	if err != nil {
 		return nil, err
@@ -102,18 +94,4 @@ func (chat *Chat) ReciveMessage(topic string, Client *Client) {
 		// send incomming message from registerd clinet to all others Client .
 		go chat.SendMessage(msg.Data, Client)
 	})
-}
-
-func main() {
-	chat, err := NewChat(nats.DefaultURL)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("Connected to " + nats.DefaultURL)
-
-	// register new Client
-	go chat.RegisterClient()
-
-	// Keep the connection alive
-	runtime.Goexit()
 }
