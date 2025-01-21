@@ -12,7 +12,12 @@ import (
 
 type uuId string
 
-type inRamMemory struct {
+type Chat struct {
+	db             inMemoryDb
+	natsConnection *nats.Conn
+}
+
+type inMemoryDb struct {
 	storage map[uuId]Client
 	mtx     sync.RWMutex
 }
@@ -20,62 +25,80 @@ type inRamMemory struct {
 type Client struct {
 	UserName string `json:"userName"`
 	UserId   uuId   `json:"userId"`
+	Message  string `json:"Message"`
 	Online   bool   `json:"online"`
 }
 
-func listener(client Client, natsConnection *nats.Conn) {
-	natsConnection.Subscribe(fmt.Sprintf("%s", client.UserId), func(msg *nats.Msg) {
+// NewChat creates and returns a new instance of Chat
+func NewChat(natsURL string) (*Chat, error) {
+	nc, err := nats.Connect(natsURL)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Chat{
+		db: inMemoryDb{
+			storage: make(map[uuId]Client),
+			mtx:     sync.RWMutex{},
+		},
+		natsConnection: nc,
+	}, nil
+}
+
+func (chat *Chat) RegisterClient() {
+	chat.natsConnection.Subscribe("Client.Register", func(msg *nats.Msg) {
+		client := Client{}
+		err := json.Unmarshal(msg.Data, &client)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		// add client to db .
+		chat.db.mtx.Lock()
+		chat.db.storage[client.UserId] = client
+		chat.db.mtx.Unlock()
+
+		fmt.Printf("Welcome dear %s to cli chat room !\n", client.UserName)
+		go chat.NewClient(&client)
+	})
+}
+
+func (chat *Chat) NewClient(client *Client) {
+	// send join message to all client exept registerd client .
+	go chat.Publisher([]byte("joind to chat"), client)
+
+	// listen for incomming message from registerd clinet .
+	go chat.Subscriber(fmt.Sprintf("%s", client.UserId), client)
+}
+
+func (chat *Chat) Publisher(msg []byte, client *Client) {
+	chat.db.mtx.RLock()
+	defer chat.db.mtx.RUnlock()
+	for uuid := range chat.db.storage {
+		pay_load := fmt.Sprintf("%s-", client.UserName) + string(msg)
+		if uuid != client.UserId {
+			chat.natsConnection.Publish(fmt.Sprintf("%s.%s", "Server", uuid), []byte(pay_load))
+		}
+	}
+}
+
+func (chat *Chat) Subscriber(topic string, client *Client) {
+	chat.natsConnection.Subscribe(topic, func(msg *nats.Msg) {
 		fmt.Printf("Message from %s : %s\n", client.UserName, string(msg.Data))
+
+		// send incomming message from registerd clinet to all others client .
+		go chat.Publisher(msg.Data, client)
 	})
 }
 
 func main() {
-	// Create server connection
-	natsConnection, _ := nats.Connect(nats.DefaultURL)
+	chat, err := NewChat(nats.DefaultURL)
+	if err != nil {
+		log.Fatal(err)
+	}
 	fmt.Println("Connected to " + nats.DefaultURL)
 
-	Storage := inRamMemory{
-		storage: map[uuId]Client{},
-	}
-
-	go func() {
-		natsConnection.Subscribe("Client.Register", func(msg *nats.Msg) {
-			clnt := Client{}
-			err := json.Unmarshal(msg.Data, &clnt)
-			if err != nil {
-				log.Fatal(err)
-			}
-			Storage.mtx.Lock()
-			Storage.storage[clnt.UserId] = clnt
-			Storage.mtx.Unlock()
-
-			fmt.Printf("Welcome dear %s to cli chat room !\n", clnt.UserName)
-			go func(client Client, natsConnection *nats.Conn) {
-				welcome := "joind to chat"
-				go func(msg []byte, natsConnection *nats.Conn) {
-					for uuid, _ := range Storage.storage {
-						pay_load := fmt.Sprintf("%s-", client.UserName) + string(msg)
-						if uuid != client.UserId {
-							natsConnection.Publish(fmt.Sprintf("%s.%s", "Server", uuid), []byte(pay_load))
-						}
-					}
-				}([]byte(welcome), natsConnection)
-
-				natsConnection.Subscribe(fmt.Sprintf("%s", client.UserId), func(msg *nats.Msg) {
-					fmt.Printf("Message from %s : %s\n", client.UserName, string(msg.Data))
-					go func(msg []byte, natsConnection *nats.Conn) {
-						for uuid, _ := range Storage.storage {
-							pay_load := fmt.Sprintf("%s-", client.UserName) + string(msg)
-							if uuid != client.UserId {
-								natsConnection.Publish(fmt.Sprintf("%s.%s", "Server", uuid), []byte(pay_load))
-							}
-						}
-					}(msg.Data, natsConnection)
-				})
-			}(clnt, natsConnection)
-		})
-
-	}()
+	go chat.RegisterClient()
 
 	// Keep the connection alive
 	runtime.Goexit()

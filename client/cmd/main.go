@@ -18,10 +18,11 @@ type uuId string
 type Client struct {
 	UserName string `json:"userName"`
 	UserId   uuId   `json:"userId"`
+	Message  string `json:"Message"`
 	Online   bool   `json:"online"`
 }
 
-func newCLient(natsConnection *nats.Conn, scanner *bufio.Scanner) (Client, error) {
+func NewCLient(natsConnection *nats.Conn, scanner *bufio.Scanner) (Client, error) {
 	fmt.Printf("Welcome to chat room..\nWhat is your name : ")
 	scanner.Scan()
 	name := scanner.Text()
@@ -44,7 +45,7 @@ func main() {
 	fmt.Println("Connected to " + nats.DefaultURL)
 	scanner := bufio.NewScanner(os.Stdin)
 
-	client, err := newCLient(natsConnection, scanner)
+	client, err := NewCLient(natsConnection, scanner)
 	if err != nil {
 		log.Fatal(err.Error())
 		return
