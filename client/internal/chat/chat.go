@@ -17,6 +17,7 @@ type ChatInterface interface {
 	SendMessage(topic string)
 	ReciveMessage(topic string)
 	GetUserId() uuId
+	CheckOnline(topic string)
 }
 
 type Chat struct {
@@ -94,4 +95,10 @@ func (chat *Chat) ReciveMessage(topic string) {
 // Get user id
 func (chat *Chat) GetUserId() uuId {
 	return chat.Client.UserId
+}
+
+func (chat *Chat) CheckOnline(topic string) {
+	chat.NatsConnection.Subscribe(topic, func(msg *nats.Msg) {
+		_ = msg.Respond([]byte{})
+	})
 }

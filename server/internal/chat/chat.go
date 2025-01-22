@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/nats-io/nats.go"
 )
@@ -14,6 +15,7 @@ type ChatInterface interface {
 	NewClient(Client *Client)
 	SendMessage(msg []byte, Client *Client)
 	ReciveMessage(topic string, Client *Client)
+	CheckOnline(Client *Client)
 }
 
 type Chat struct {
@@ -61,6 +63,9 @@ func (chat *Chat) NewClient(Client *Client) {
 
 	// listen for incomming message from registerd clinet .
 	go chat.ReciveMessage(fmt.Sprintf("%s", Client.UserId), Client)
+
+	// check about online or not .
+	go chat.CheckOnline(Client)
 }
 
 func (chat *Chat) SendMessage(msg []byte, Client *Client) {
@@ -94,4 +99,15 @@ func (chat *Chat) ReciveMessage(topic string, Client *Client) {
 		// send incomming message from registerd clinet to all others Client .
 		go chat.SendMessage(msg.Data, Client)
 	})
+}
+
+func (chat *Chat) CheckOnline(Client *Client) {
+	for {
+		_, err := chat.NatsConnection.Request(fmt.Sprintf("%s.%s.%s", "Server", "Online", Client.UserId), []byte{}, 1*time.Second)
+		if err != nil {
+			chat.db.mtx.Lock()
+			delete(chat.db.storage, Client.UserId)
+			chat.db.mtx.Unlock()
+		}
+	}
 }

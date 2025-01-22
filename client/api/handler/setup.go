@@ -28,6 +28,9 @@ func Run() error {
 	// get another users message
 	go chat.ReciveMessage(fmt.Sprintf("%s.%s", "Server", chat.GetUserId()))
 
+	// check of being online
+	go chat.CheckOnline(fmt.Sprintf("%s.%s.%s", "Server", "Online", chat.GetUserId()))
+
 	// Keep the connection alive
 	runtime.Goexit()
 
