@@ -3,6 +3,7 @@ package chat
 import (
 	"fmt"
 	"log"
+	"strings"
 )
 
 func (chat *Chat) SendMessage(subj string, message []byte, Client *Client) {
@@ -19,6 +20,9 @@ func (chat *Chat) SendMessage(subj string, message []byte, Client *Client) {
 			subj := fmt.Sprintf("%s.%s", SERVER, Client.UserId)
 			chat.Nats.Send(subj, []byte(payLoad))
 		default:
+			if strings.Contains(string(message), "#") {
+				break
+			}
 			for uuid := range chat.Db.storage {
 				payLoad := fmt.Sprintf("%s-", Client.UserName) + string(message)
 				if uuid != Client.UserId {
