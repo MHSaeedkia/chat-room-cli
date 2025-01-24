@@ -10,6 +10,8 @@ import (
 const (
 	CLIENT_REGISTER = "Client.Register"
 	SERVER          = "Server"
+	ONLINE          = "Online"
+	CLIENT          = "Client"
 )
 
 type ChatInterface interface {
@@ -27,7 +29,6 @@ type Client struct {
 	UserName string `json:"userName"`
 	UserId   uuId   `json:"userId"`
 	Message  string `json:"Message"`
-	Online   bool   `json:"online"`
 }
 
 type inMemoryDb struct {

@@ -26,7 +26,6 @@ func (chat *Chat) NewClient(client *Client) {
 		client := Client{
 			UserName: chat.Scanner.Text(),
 			UserId:   uuId(uuid.New().String()),
-			Online:   true,
 		}
 		data, _ := json.Marshal(client)
 
